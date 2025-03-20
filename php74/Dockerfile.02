@@ -1,0 +1,88 @@
+# 
+# framenetbrasil/apache-php:v3.5.1
+#
+# 2020/09/24: php:7.4.10-apache
+# 2020/09/24: add Ds extension
+#
+
+# Base image
+FROM php:7.4.10-apache
+
+# Fix debconf warnings upon build
+ARG DEBIAN_FRONTEND=noninteractive
+
+USER root
+
+# Run apt update
+RUN apt-get -y update --fix-missing
+RUN apt-get upgrade -y
+
+# Install useful tools
+RUN apt-get -y install apt-utils nano wget dialog
+
+# Install important libraries
+RUN apt-get -y install --fix-missing apt-utils build-essential git curl libcurl4 libcurl4-openssl-dev zip unzip
+
+# Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+# Install xdebug
+RUN pecl install xdebug-2.9.0
+RUN docker-php-ext-enable xdebug
+
+# Other PHP7 Extensions
+
+RUN apt-get -y install libsqlite3-dev libsqlite3-0 mariadb-client
+RUN docker-php-ext-install pdo_mysql
+RUN docker-php-ext-install pdo_sqlite
+RUN docker-php-ext-install mysqli
+
+RUN docker-php-ext-install curl
+RUN docker-php-ext-install tokenizer
+RUN docker-php-ext-install json
+
+RUN apt-get -y install libzip-dev
+RUN docker-php-ext-install zip
+
+RUN apt-get -y install libicu-dev
+RUN docker-php-ext-install -j$(nproc) intl
+
+RUN apt-get -y install libonig-dev
+RUN docker-php-ext-install mbstring
+
+RUN docker-php-ext-install sockets
+RUN docker-php-ext-install pcntl
+RUN docker-php-ext-install bcmath
+
+RUN apt-get -y install libxml2-dev
+RUN docker-php-ext-install xml
+
+RUN docker-php-ext-install curl
+RUN docker-php-ext-install dom
+RUN docker-php-ext-install session
+RUN docker-php-ext-install opcache
+
+RUN pecl install ds
+
+RUN pecl install apcu
+
+RUN apt-get install -y libfreetype6-dev libjpeg62-turbo-dev libpng-dev
+#RUN docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/
+RUN docker-php-ext-configure gd
+RUN docker-php-ext-install -j$(nproc) gd
+
+RUN echo "xdebug.remote_enable=1" >> "$PHP_INI_DIR/php.ini" \
+    && echo "xdebug.idekey=phpstorm" >> "$PHP_INI_DIR/php.ini" \
+    && echo "xdebug.remote_host=host.docker.internal" >> "$PHP_INI_DIR/php.ini" \
+    && echo "xdebug.remote_port=9095" >> "$PHP_INI_DIR/php.ini" \
+    && echo "extension = apcu.so" >> "$PHP_INI_DIR/php.ini" \
+    && echo "extension = ds.so" >> "$PHP_INI_DIR/php.ini" 
+
+# Update web root to public
+# See: https://hub.docker.com/_/php#changing-documentroot-or-other-apache-configuration
+ENV APACHE_DOCUMENT_ROOT /var/www/html/public
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
+RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+
+# Enable mod_rewrite
+RUN a2enmod rewrite headers

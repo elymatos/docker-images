@@ -1,0 +1,83 @@
+# Base image
+FROM php:8.0.1-apache
+
+# Fix debconf warnings upon build
+ARG DEBIAN_FRONTEND=noninteractive
+
+USER root
+
+# Run apt update
+RUN apt-get -y update
+#RUN apt-get upgrade -y
+
+# Install useful tools and libraries
+RUN apt-get -y install libcurl4 libcurl4-openssl-dev mariadb-client libzip-dev  libicu-dev libonig-dev
+RUN apt-get -y install apt-utils build-essential nano wget dialog git curl zip unzip
+RUN apt-get install -y libfreetype6-dev libjpeg62-turbo-dev libpng-dev
+
+# Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+RUN mkdir -p /opt/php-libs
+# Install xdebug 3.0
+COPY ./xdebug.ini /opt/php-libs
+# Copy xdebug configuration for remote debugging
+RUN cd /opt/php-libs \
+    && git clone https://github.com/xdebug/xdebug \
+    && cd xdebug \
+    # the last working commit, because the php-src is not up to date yet in this alpine
+    && phpize \
+    && ./configure --enable-xdebug-dev \
+    && make all \
+    && mv /opt/php-libs/xdebug.ini /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+
+# Install ds
+RUN cd /opt/php-libs \
+    && git clone https://github.com/php-ds/extension "php-ds" \
+    && cd php-ds \
+    # the last working commit, because the php-src is not up to date yet in this alpine
+    && phpize \
+    && ./configure \
+    && make \
+    && make install \
+# Clean up the build files
+    && make clean \
+    && phpize --clean \
+    && echo "extension = ds.so" >> /usr/local/etc/php/conf.d/docker-php-ext-ds.ini
+
+# Other PHP8 Extensions
+
+RUN docker-php-ext-install pdo_mysql
+RUN docker-php-ext-install mysqli
+RUN docker-php-ext-install zip
+RUN docker-php-ext-install -j$(nproc) intl
+RUN docker-php-ext-install sockets
+RUN docker-php-ext-install pcntl
+RUN docker-php-ext-install bcmath
+RUN docker-php-ext-install opcache
+
+RUN mkdir -p /usr/src/php/ext/apcu && curl -fsSL https://pecl.php.net/get/apcu | tar xvz -C "/usr/src/php/ext/apcu" --strip 1 && docker-php-ext-install apcu 
+RUN docker-php-ext-configure gd
+RUN docker-php-ext-install -j$(nproc) gd
+#RUN docker-php-ext-install ds
+
+RUN mkdir -p /tmp/.opcache
+RUN echo "opcache.enable=1;" >> "$PHP_INI_DIR/php.ini" \
+    && echo "opcache.memory_consumption=64;" >> "$PHP_INI_DIR/php.ini" \
+    && echo "opcache.interned_strings_buffer=8;" >> "$PHP_INI_DIR/php.ini" \
+    && echo "opcache.max_accelerated_files=3000;" >> "$PHP_INI_DIR/php.ini" \
+    && echo "opcache.revalidate_freq=180;" >> "$PHP_INI_DIR/php.ini" \
+    && echo "opcache.fast_shutdown=0;" >> "$PHP_INI_DIR/php.ini" \
+    && echo "opcache.enable_cli=0;" >> "$PHP_INI_DIR/php.ini" \
+    && echo "opcache.revalidate_path=0;" >> "$PHP_INI_DIR/php.ini" \
+    && echo "opcache.validate_timestamps=1;" >> "$PHP_INI_DIR/php.ini" \
+    && echo "opcache.max_file_size=0;" >> "$PHP_INI_DIR/php.ini" \
+    && echo "opcache.file_cache=/tmp/.opcache;" >> "$PHP_INI_DIR/php.ini" \
+    && echo "opcache.file_cache_only=1;" >> "$PHP_INI_DIR/php.ini"
+
+ENV APACHE_DOCUMENT_ROOT /var/www/html/public
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
+RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+
+# Enable mod_rewrite
+RUN a2enmod rewrite headers
