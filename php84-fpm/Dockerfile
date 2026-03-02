@@ -23,13 +23,14 @@ RUN apk add -U --no-cache \
     icu-data-full \
     brotli-dev \
     dotnet9-runtime
-
 RUN docker-php-ext-configure gd --with-jpeg \
+    && docker-php-ext-configure imap --with-kerberos --with-imap-ssl \
     && docker-php-ext-configure pcntl --enable-pcntl \
     && docker-php-ext-install \
     -j$(nproc) gd \
     zip \
     opcache \
+    imap \
     fileinfo \
     mbstring \
     pdo_mysql \
@@ -63,7 +64,6 @@ RUN docker-php-ext-configure gd --with-jpeg \
     && docker-php-ext-enable uv \
     && docker-php-ext-configure intl \
     && docker-php-ext-install intl
-
 
 COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
 
